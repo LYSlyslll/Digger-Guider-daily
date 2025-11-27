@@ -7,11 +7,11 @@ import qlib
 from qlib.data import D
 import copy
 import datetime as dt
-qlib.init()
+qlib.init(provider_uri="~/.qlib/qlib_data/cn_data_1min")
 
 print('Reading...')
 label_names = ['LABEL0']
-data = pd.read_pickle('./data/day_csi300_till_20201228.pkl').loc(axis=0)['2007-01-01':,:]
+data = pd.read_pickle('./data/day_csi300.pkl').loc(axis=0)['2007-01-01':,:]
 ret = data[label_names]
 stocks = ret.reset_index().groupby('instrument')['datetime'].agg(['min', 'max'])
 print(stocks)
@@ -50,6 +50,11 @@ for code, (start_time, end_time) in tqdm(stocks.iterrows()):
             df = df.groupby(df.index.ceil('%smin'%N)).agg(
                 {'$high': 'max', '$low': 'min', '$close': 'last', '$open':'first','$volume': 'sum','$money':'sum'})
     
+    day_counts = df.groupby(df.index.date).size()
+    full_days = day_counts[day_counts == num_bar].index  # 只要整天
+    mask = np.isin(df.index.date, full_days)
+    df = df[mask]
+
     X = df.values.reshape(-1, num_bar, len(df.columns)) # [*,*,h/l/c/o/vol/vwap]
     close = copy.deepcopy(X[:, -1:, 2]) # last close
     volume = np.mean(X[:, :, 4], axis=1, keepdims=True) # mean volume
