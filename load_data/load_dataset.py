@@ -45,13 +45,13 @@ def load_dataset(market='csi300'):
 
     ## load features
     print('loading features...')
-    df = D.features(D.instruments(market), fields, start_time='2007-01-01')
+    df = D.features(D.instruments(market), fields, start_time='2007-01-01') #
     df.columns = names
     print('load features over')
     ## load labels
     if len(labels):
         print('loading labels...')
-        df_labels = D.features(D.instruments('all'), labels, start_time='2007-01-01')
+        df_labels = D.features(D.instruments('all'), labels, start_time='2007-01-01') #
         df_labels.columns = label_names
         df[label_names] = df_labels
         print('load labels over')
