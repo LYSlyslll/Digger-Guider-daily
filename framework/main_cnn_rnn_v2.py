@@ -76,7 +76,7 @@ def Day_model_2(_run,
                              day_rep=test_day_reps,
                              pred_path=pred_path)
     return rmse, mae
-    
+
 def inference(dset, model,day_rep=None, pred_path=None):
     pred = pd.DataFrame(index=dset.index)
     pred['label'] = dset.label
@@ -99,48 +99,6 @@ def inference(dset, model,day_rep=None, pred_path=None):
 
     return RMSE, MAE
 
-def Mix_to_Min(_run,
-              output_path,
-              min_model,
-              min_train_set,
-              min_valid_set,
-              min_test_set,
-              train_hids,
-              valid_hids,
-              itera=0):
-
-    pprint('training min_model...')
-    train_day_reps, valid_day_reps = min_model.fit(min_train_set,
-                                                   min_valid_set,
-                                                   train_hids,
-                                                   valid_hids,
-                                                   output_path = output_path,
-                                                   run=_run,
-                                                   itera=itera)
-    test_day_reps = min_model.predict(min_test_set)
-
-    return train_day_reps, valid_day_reps, test_day_reps
-
-def Min_to_Mix(_run,
-              output_path,
-              mix_model,
-              min_train_set,
-              min_valid_set,
-              min_test_set,
-              train_day_reps,
-              valid_day_reps,
-              itera=0):
-    pprint('training mix_model...')
-    train_day_reps, valid_day_reps = mix_model.fit(min_train_set,
-                                                   min_valid_set,
-                                                   train_day_reps,
-                                                   valid_day_reps,
-                                                   output_path = output_path,
-                                                   run=_run,
-                                                   itera=itera)
-    test_day_reps = mix_model.predict(min_test_set)
-    return train_day_reps, valid_day_reps, test_day_reps
-
 @ex.config
 def run_config():
     seed = 2
@@ -149,7 +107,7 @@ def run_config():
     model_name = 'rnn_v3'
     comt = 'rnn_60_1.0'
     run_on = False
-    dsets = ["day_csi800_ly_v3_1", "hft_10m_csi800_ly_v3_1"]
+    dsets = ["day_csi300"]
 
 
 @ex.main
@@ -160,7 +118,6 @@ def main(_run, seed, loader_name, model_name, output_path, comt, run_on,
 
     pprint('output path:', output_path)
     model_path = output_path + '/model.bin'
-    # pred_path = output_path+'/pred_%s_%d.pkl' %(model_name,seed)
     pprint('create loader `%s` and model `%s`...' % (loader_name, model_name))
 
     ###### Daily Model and Data Prepare #########
@@ -170,9 +127,8 @@ def main(_run, seed, loader_name, model_name, output_path, comt, run_on,
     day_model_1 = getattr(models_module, model_name).Day_Model_1()
     super_model = getattr(models_module, model_name)
     pprint(f'''
-        Day_Model_1: {count_num_params(super_model.Day_Model_1())}, 
-        Day_model_2: {count_num_params(super_model.Day_Model_2())}, Digger:{count_num_params(super_model.Min_Model())},
-        Guider: {count_num_params(super_model.Mix_Model())}
+        Day_Model_1: {count_num_params(super_model.Day_Model_1())},
+        Day_model_2: {count_num_params(super_model.Day_Model_2())}
         ''')
     pprint('load daily data...')
     day_train_set, day_valid_set, day_test_set = day_loader.load_data()
@@ -182,32 +138,11 @@ def main(_run, seed, loader_name, model_name, output_path, comt, run_on,
                                          day_train_set, day_valid_set,
                                          day_test_set)
 
-    ###### High-freq Model and Data Prepare ########
+    ####### Day Model 2########
     set_random_seed(seed)
-    min_loader = getattr(loaders_module, loader_name).DataLoader(dset=dsets[1])
-
-    pprint('load high-freq data...')
-    min_train_set, min_valid_set, min_test_set = min_loader.load_data()
-
-    ####### Min Model ######
-    itera = 0
-    set_random_seed(seed)
-    _run = SummaryWriter(comment='_min_model_%d'%itera) if run_on else None
-    min_model = getattr(models_module, model_name).Min_Model()
-    min_train_day_reps, min_valid_day_reps, min_test_day_reps = Mix_to_Min(_run,
-                                                              output_path,
-                                                              min_model,
-                                                              min_train_set,
-                                                              min_valid_set,
-                                                              min_test_set,
-                                                              train_hids, 
-                                                              valid_hids,
-                                                              itera=itera)
-    ######### Day Model 2########
-    set_random_seed(seed)
-    _run = SummaryWriter(comment='_day_model2_min_%d'%itera) if run_on else None
+    _run = SummaryWriter(comment='_day_model2') if run_on else None
     day_model_2 = getattr(models_module, model_name).Day_Model_2()
-    pred_path = output_path+'/pred_%s_%d.pkl' %(model_name,itera)
+    pred_path = output_path+'/pred_%s.pkl' %(model_name)
     rmse_min,  mae_min = Day_model_2(
         _run,
         output_path,
@@ -215,93 +150,13 @@ def main(_run, seed, loader_name, model_name, output_path, comt, run_on,
         day_train_set,
         day_valid_set,
         day_test_set,
-        min_train_day_reps, 
-        min_valid_day_reps, 
-        min_test_day_reps,
+        train_hids,
+        valid_hids,
+        test_hids,
         pred_path)
-    
-    #####Iter prep###
-    pre_rmse_min = 100
-    pre_mae_min = 100
-    #####Iter####
-    while (rmse_min < pre_rmse_min) or (mae_min < pre_mae_min):
-        itera += 1
-        pprint('Iter:', itera)
-        pre_rmse_min = rmse_min
-        pre_mae_min = mae_min
 
-        ####### Mix Model ######
-        set_random_seed(seed)
-        mix_model = getattr(models_module, model_name).Mix_Model()
-        _run = SummaryWriter(comment='_mix_model_%d' %
-                             itera) if run_on else None
-        mix_train_day_reps, mix_valid_day_reps, mix_test_day_reps = Min_to_Mix(
-            _run,
-            output_path,
-            mix_model,
-            min_train_set,
-            min_valid_set,
-            min_test_set,
-            min_train_day_reps,
-            min_valid_day_reps,
-            itera=itera)
-
-        ####### Day Model 2######
-        set_random_seed(seed)
-        pprint('Mix model fine tune...')
-        day_model_2 = getattr(models_module, model_name).Day_Model_2()
-        _run = SummaryWriter(comment='_day_model2_mix_%d' %
-                             itera) if run_on else None
-        rmse_mix, mae_mix = Day_model_2(
-            _run,
-            output_path,
-            day_model_2,
-            day_train_set,
-            day_valid_set,
-            day_test_set,
-            mix_train_day_reps,
-            mix_valid_day_reps,
-            mix_test_day_reps)
-
-        ####### Min Model ######
-        set_random_seed(seed)
-        min_model = getattr(models_module, model_name).Min_Model()
-        _run = SummaryWriter(comment='_min_model_%d' %
-                             itera) if run_on else None
-
-        min_train_day_reps, min_valid_day_reps, min_test_day_reps = Mix_to_Min(
-            _run,
-            output_path,
-            min_model,
-            min_train_set,
-            min_valid_set,
-            min_test_set,
-            mix_train_day_reps,
-            mix_valid_day_reps,
-            itera=itera)
-        ####### Day Model 2######
-        set_random_seed(seed)
-        pprint('Min model fine tune...')
-        pred_path = output_path+'/pred_%s_%d.pkl' %(model_name,itera)
-        day_model_2 = getattr(models_module, model_name).Day_Model_2()
-        _run = SummaryWriter(comment='_day_model2_min_%d' %
-                             itera) if run_on else None
-        rmse_min, mae_min = Day_model_2(
-            _run,
-            output_path,
-            day_model_2,
-            day_train_set,
-            day_valid_set,
-            day_test_set,
-            min_train_day_reps,
-            min_valid_day_reps,
-            min_test_day_reps,
-            pred_path)
-
-        pprint(f'Iter: {itera}')
-        pprint(
-            f'pre_rmse_min: {pre_rmse_min}, rmse_min:{rmse_min}')
-        pprint('###################')
+    pprint('###################')
+    pprint(f'Final RMSE: {rmse_min}, MAE: {mae_min}')
 
 if __name__ == '__main__':
 

@@ -61,43 +61,15 @@ class DataLoader(object):
             df = df.sort_index()
 
         df['LABEL'] = df['LABEL%s'%self.label_id].groupby(level='datetime').apply(robust_zscore)
-        # drop 'money' and 'pre_close' cols in hft_m_csi_800
-        if self.dset[:3] != 'day':
-            if df.columns.str.contains('money|pre_close').any():
-                mask = ~df.columns.str.contains('money|pre_close')
-                df = df.iloc[:,mask]
-            if self.pre_n_day > 1:
-                pprint('processing previous n day...')
-                mask = ~df.columns.str.contains('LABEL|VWAP')
-                feature = df.iloc[:,mask]
-                label = df['LABEL']
-                del df
-                gc.collect()
-                ins_box = []
-                for ins in tqdm(feature.index.get_level_values('instrument').unique()):
-                    _df = feature.xs(ins,level='instrument') #select the specific instrument df
-                    _df = pd.concat([_df.shift(i) for i in reversed(range(self.pre_n_day))],axis=1)
-                    #-> feature_1_pre_n_day...featrue_m_pre_n_day...feature_1_today...feature_m_today
-                    _df['instrument'] = ins
-                    ins_box.append(_df)
-                feature = pd.concat(ins_box).reset_index()
-                feature = feature.set_index(['datetime','instrument']).sort_index(level='datetime')
-                label = label.reindex(feature.index)
-                df = pd.concat([feature,label],axis=1)
-                pprint(f'col {df.columns}')
-                pprint(f'num_col {len(df.columns)}')
-                pprint('finished !')
-            self._raw_df = df
-
-        elif self.dset[:3] == 'day':
-            assert self.pre_n_day <= 60 #pre_n_day: daily_seq_len 
-            col = []
-            for i in ['OPEN', 'CLOSE', "HIGH", 'LOW', 'VOLUME', 'VWAP']:
-                col.extend([i + str(j) for j in reversed(range(self.pre_n_day))]) # day_csi800 needs reserved feature cols for rnn
-            _df = copy.deepcopy(df[col])
-            _df['LABEL'] = df['LABEL'].values
-            pprint(f'num_col {len(_df.columns)}')
-            self._raw_df  = _df
+        assert self.dset[:3] == 'day', 'Only daily datasets are supported now.'
+        assert self.pre_n_day <= 60 #pre_n_day: daily_seq_len
+        col = []
+        for i in ['OPEN', 'CLOSE', "HIGH", 'LOW', 'VOLUME', 'VWAP']:
+            col.extend([i + str(j) for j in reversed(range(self.pre_n_day))]) # day_csi800 needs reserved feature cols for rnn
+        _df = copy.deepcopy(df[col])
+        _df['LABEL'] = df['LABEL'].values
+        pprint(f'num_col {len(_df.columns)}')
+        self._raw_df  = _df
 
     @data_ingredient.capture
     def load_data(self, train_start_date, train_end_date, valid_start_date,
